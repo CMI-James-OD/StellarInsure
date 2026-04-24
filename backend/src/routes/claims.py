@@ -1,5 +1,4 @@
 from datetime import datetime as dt
-import logging
 from fastapi import APIRouter, Depends, status, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -20,10 +19,8 @@ from ..errors import (
     ClaimNotFoundError
 )
 from ..services.storage_service import storage_service
-from ..services.webhook_service import dispatch_webhook_event
 
 router = APIRouter(prefix="/claims", tags=["claims"])
-logger = logging.getLogger(__name__)
 
 def format_claim_response(claim: Claim) -> ClaimResponse:
     proof = claim.proof
@@ -94,21 +91,6 @@ async def create_claim(
     db.commit()
     db.refresh(claim)
 
-    try:
-        dispatch_webhook_event(
-            db=db,
-            user_id=current_user.id,
-            event_type="claim.created",
-            payload={
-                "claim_id": claim.id,
-                "policy_id": claim.policy_id,
-                "claim_amount": float(claim.claim_amount),
-                "approved": claim.approved,
-            },
-        )
-    except Exception:
-        logger.exception("Failed to dispatch claim.created webhook for claim_id=%s", claim.id)
-
     return format_claim_response(claim)
 
 
@@ -163,21 +145,6 @@ async def create_claim_with_file(
     db.add(claim)
     db.commit()
     db.refresh(claim)
-
-    try:
-        dispatch_webhook_event(
-            db=db,
-            user_id=current_user.id,
-            event_type="claim.created",
-            payload={
-                "claim_id": claim.id,
-                "policy_id": claim.policy_id,
-                "claim_amount": float(claim.claim_amount),
-                "approved": claim.approved,
-            },
-        )
-    except Exception:
-        logger.exception("Failed to dispatch claim.created webhook for claim_id=%s", claim.id)
 
     return format_claim_response(claim)
 
@@ -301,23 +268,6 @@ async def update_claim_status(
 
     db.commit()
     db.refresh(claim)
-
-    event_type = "claim.approved" if approved else "claim.rejected"
-    try:
-        dispatch_webhook_event(
-            db=db,
-            user_id=current_user.id,
-            event_type=event_type,
-            payload={
-                "claim_id": claim.id,
-                "policy_id": claim.policy_id,
-                "claim_amount": float(claim.claim_amount),
-                "approved": claim.approved,
-                "policy_status": policy.status.value if policy else None,
-            },
-        )
-    except Exception:
-        logger.exception("Failed to dispatch %s webhook for claim_id=%s", event_type, claim.id)
 
     return format_claim_response(claim)
 
